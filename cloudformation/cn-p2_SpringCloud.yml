@@ -163,7 +163,7 @@ Resources:
             apt update && apt install -y openjdk-11-jre-headless
             echo =========> Launching application
             export spring_profiles_active=production
-            export cloud_aws_rds_dbInstanceIdentifier=cnp2db
+            export cloud_aws_rds_dbInstanceIdentifier=rdsDBInstance
             export cloud_aws_rds_rdsDBInstance_password=${RdsPass}
             export BUCKET_NAME=${BucketName}
             export REGION=eu-west-1
