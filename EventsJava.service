@@ -1,0 +1,14 @@
+[Unit]
+ Description=EventsJava
+ After=network.target
+[Service]
+ Type = forking
+ User=root
+ Restart=always
+ RestartSec=1
+ SuccessExitStatus=143 
+ ExecStart = /usr/local/bin/EventsJava.sh start
+ ExecStop = /usr/local/bin/EventsJava.sh stop
+ ExecReload = /usr/local/bin/EventsJava.sh reload
+[Install]
+ WantedBy=multi-user.target

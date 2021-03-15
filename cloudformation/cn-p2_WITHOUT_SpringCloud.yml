@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: 'CN-P2-Creation Cloudformation template'
+
+Parameters:
+  #S3
+  S3BucketName:
+    Description: Name of the S3 bucket
+    Type: String
+    Default: cn-p2-buckett
+
+  # DB
+  DBPassword:
+    Description: RDS mysql db password
+    Type: String
+    NoEcho: true
+    MinLength: 8
+
+  # EC2 AMI
+  AMI:
+    Description: AMI to be used. DON'T FORGET TO USE AN AMI OF SAME ZONE. Default Ubuntu 18.04
+    Type: 'AWS::EC2::Image::Id'
+    Default: 'ami-013f17f36f8b1fefb'  # By default is Ubuntu 18.04 64-bits in us-east-1
+
+
+  #URL
+  URLJar:
+    Description: URL where the downloadable jar is placed
+    Type: String
+    Default: https://s3.amazonaws.com/practica-2.cloud.michel/app.jar
+
+  #Region
+
+
+Resources:
+
+  ##############
+  # S3 Buckets #
+  ##############
+  cnp2S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+
+  ###########
+  #  ROLES  #
+  ###########
+  roleS3RDSAccess:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+      Description: "Role with permissions to S3 full access and RDS full data access"
+      Policies:
+        - PolicyName: EventsS3FullAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 's3:*'
+                Resource:
+                  !Join
+                  - ''
+                  - - !GetAtt cnp2S3Bucket.Arn
+                    - '/*'
+  cnp2InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref roleS3RDSAccess
+
+
+  ##################
+  # Security group #
+  ##################
+  cnp2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for CNP2. Port 443 for app, Port 22 for ssh"
+      GroupName: Cloud-computing-practice-2
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: cn-p2-sg
+
+  rdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for MySQL RDS"
+      GroupName: Cloud-computing-practice-2-RDS
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupName: !Ref cnp2SecurityGroup # Access to instances of this group ONLY!!
+      Tags:
+        - Key: Name
+          Value: cn-p2-sg-rds
+
+  #######
+  # EC2 #
+  #######
+
+
+  # RDS Instance
+  rdsDBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceClass: db.t2.micro
+      AllocatedStorage: 10
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: false
+      DBInstanceIdentifier: rdsDBInstance
+      DBName: cnp2db
+      Engine: mysql
+      EngineVersion: 8.0
+      MasterUsername: cnp2dbuser
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: false
+      PubliclyAccessible: true
+      EnableIAMDatabaseAuthentication: true
+      StorageEncrypted: false
+      VPCSecurityGroups:
+        - !GetAtt rdsSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: cn-p2-rds
+
+
+  # EC2 Instance
+  myEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: cn-p2-key
+      ImageId: !Ref AMI
+      InstanceType: "t2.micro"
+      SecurityGroups:
+        - !Ref cnp2SecurityGroup
+      IamInstanceProfile: !Ref cnp2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash -ex
+            apt update && apt install -y openjdk-11-jre-headless
+            echo =========> Launching application
+            export spring_profiles_active=production
+            export RDS_DATABASE=cnp2db
+            export RDS_USER=cnp2dbuser
+            export RDS_PASS=${RdsPass}
+            export RDS_ENDPOINT=${RdsURL}
+            export BUCKET_NAME=${BucketName}
+            export REGION=us-east-1
+            wget ${DownloadJar}
+            java -jar app.jar
+          - {
+            RdsURL: !GetAtt rdsDBInstance.Endpoint.Address,
+            RdsPass: !Ref DBPassword,
+            BucketName: !Ref S3BucketName,
+            DownloadJar: !Ref URLJar
+          }
+      Tags:
+        - Key: Name
+          Value: cn-p2-ec2
+
+Outputs:
+  WebSiteURL:
+    Value:
+      !Join
+      - ''
+      - - "https://"
+        - !GetAtt myEC2Instance.PublicDnsName
+        - ":8443"
+        - "/api/events/"
+    Description: "Cloud Computing Practice 2 - Adding a new event"
