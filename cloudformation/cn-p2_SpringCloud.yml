@@ -164,11 +164,11 @@ Resources:
             echo =========> Launching application
             export spring_profiles_active=production
             export cloud_aws_rds_dbInstanceIdentifier=cnp2db
-            export cloud_aws_rds_rdsDBInstance.password=${RdsPass}
+            export cloud_aws_rds_rdsDBInstance_password=${RdsPass}
             export BUCKET_NAME=${BucketName}
             export REGION=eu-west-1
             wget ${DownloadJar}
-            java -jar app.jar
+            java -jar appMasterCloud.jar
           - {
             RdsURL: !GetAtt rdsDBInstance.Endpoint.Address,
             RdsPass: !Ref DBPassword,
